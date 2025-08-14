@@ -182,15 +182,20 @@ function App() {
     const win = window.open('', '_blank');
     if (!win) return;
     const styles = `
-      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; padding:24px; color:#111}
-      h1{font-size:20px; margin:0 0 8px}
-      h2{font-size:16px; margin:0 0 16px; color:#374151}
-      table{width:100%; border-collapse:collapse; margin-top:8px}
-      th,td{border:1px solid #e5e7eb; padding:8px; text-align:left}
-      tfoot td{font-weight:bold}
-      .meta{margin-bottom:12px; color:#4b5563}
-      .right{text-align:right}
-      @media print{button{display:none}}
+      :root{--txt:#111;--muted:#4b5563;--line:#e5e7eb}
+      html,body{background:#fff}
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; padding:0; color:var(--txt)}
+      .sheet{width:25%; min-width:220px; margin:10px auto; padding:8px}
+      h1{font-size:18px; margin:0 0 6px}
+      .meta{margin-bottom:6px; color:var(--muted); font-size:13px}
+      table{width:100%; border-collapse:collapse; margin-top:6px; font-size:14px}
+      th,td{border:1px solid var(--line); padding:4px 6px; text-align:left}
+      thead th{background:#f8fafc; font-weight:600}
+      tfoot td{font-weight:700}
+      .right{text-align:right; font-variant-numeric: tabular-nums}
+      .total{font-size:16px}
+      .actions{margin-top:8px; text-align:center}
+      @media print{.actions{display:none}}
     `;
     const rowsHtml = items
       .filter(it => it.value > 0)
@@ -198,16 +203,16 @@ function App() {
       .join('') || '<tr><td colspan="2">Sin cargos para este mes</td></tr>';
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Comprobante - ${month}</title><style>${styles}</style></head>
       <body>
-        <h1>Comprobante Gastos Departamento</h1>
-        <div class="meta">Mes: <strong>${month}</strong> · Fecha: ${new Date().toLocaleDateString()}</div>
-        <h2>Detalle</h2>
-        <table>
-          <thead><tr><th>Concepto</th><th class="right">Importe</th></tr></thead>
-          <tbody>${rowsHtml}</tbody>
-          <tfoot><tr><td>Total a pagar al Depto</td><td class="right">${fmt(total)}</td></tr></tfoot>
-        </table>
-        <div style="margin-top:16px; color:#6b7280; font-size:12px">Documento generado automáticamente</div>
-        <button onclick="window.print()" style="margin-top:16px; padding:8px 12px">Imprimir</button>
+        <div class="sheet">
+          <h1>Gastos Departamento - ${month}</h1>
+          <div class="meta">Fecha: ${new Date().toLocaleDateString()}</div>
+          <table>
+            <thead><tr><th>Concepto</th><th class="right">Importe</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+            <tfoot><tr><td class="total">Total a pagar</td><td class="right total">${fmt(total)}</td></tr></tfoot>
+          </table>
+          <div class="actions"><button onclick="window.print()" style="padding:4px 8px; font-size:12px">Imprimir</button></div>
+        </div>
       </body></html>`;
     win.document.open();
     win.document.write(html);
