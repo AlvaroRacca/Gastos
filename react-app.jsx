@@ -254,7 +254,7 @@ function App() {
             <input type="month" value={month} onChange={(e)=>loadMonth(e.target.value)} />
           </label>
           <button className="btn" onClick={onNew}>Nuevo Mes</button>
-          {isAuthed && <button className="btn" onClick={async()=>{ await api.logout(); setIsAuthed(false); setShowLogin(true); }}>Salir</button>}
+          {isAuthed && <button className="btn" onClick={async()=>{ await api.logout(); window.location.reload(); }}>Salir</button>}
         </div>
       </header>
 
@@ -395,7 +395,6 @@ function LoginModal({ onLogin, onClose }) {
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
           </div>
         </form>
-        <p className="hint">Configura APP_PASSWORD en el servidor.</p>
       </div>
     </div>
   );

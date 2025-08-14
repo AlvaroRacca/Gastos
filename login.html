@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Acceso - Gastos</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; background: var(--bg, #0b1020); color: var(--text, #e5e7eb); }
+    .login-wrap { width:100%; max-width:380px; padding:16px; }
+    .modal-card { width:100%; }
+    .logo { text-align:center; margin-bottom: 8px; font-weight: 700; letter-spacing: 0.3px; opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="modal-card">
+      <div class="logo">Control de Gastos</div>
+      <h2>Acceso</h2>
+      <div class="form-field">
+        <label for="password">Contraseña</label>
+        <input id="password" type="password" autocomplete="current-password" autofocus />
+      </div>
+      <div id="error" class="form-error" style="display:none"></div>
+      <div class="actions" style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end">
+        <button id="btnLogin" class="btn">Entrar</button>
+      </div>
+      <div class="hint">Ingresá la contraseña para continuar</div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const btn = $('#btnLogin');
+    const error = $('#error');
+    const input = $('#password');
+
+    async function doLogin() {
+      error.style.display = 'none';
+      const password = input.value.trim();
+      if (!password) { error.textContent = 'Ingresá la contraseña'; error.style.display = 'block'; return; }
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ password })
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          error.textContent = j.error === 'invalid_password' ? 'Contraseña incorrecta' : 'Error de acceso';
+          error.style.display = 'block';
+          return;
+        }
+        // OK -> volver a la app
+        location.href = '/';
+      } catch (e) {
+        error.textContent = 'Error de red';
+        error.style.display = 'block';
+      }
+    }
+
+    btn.addEventListener('click', doLogin);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  </script>
+</body>
+</html>
