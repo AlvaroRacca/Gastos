@@ -170,6 +170,50 @@ function App() {
     await api.exportCSV();
   };
 
+  const onPrintDepto = () => {
+    const d = { ...form };
+    const items = [
+      { label: 'Expensa', value: toNum(d.gExpensa) },
+      { label: 'Agua', value: toNum(d.gAgua) },
+      { label: 'Gas', value: toNum(d.gGas) },
+      { label: 'Luz', value: toNum(d.gLuz) },
+    ];
+    const total = items.reduce((s, it) => s + it.value, 0);
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const styles = `
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; padding:24px; color:#111}
+      h1{font-size:20px; margin:0 0 8px}
+      h2{font-size:16px; margin:0 0 16px; color:#374151}
+      table{width:100%; border-collapse:collapse; margin-top:8px}
+      th,td{border:1px solid #e5e7eb; padding:8px; text-align:left}
+      tfoot td{font-weight:bold}
+      .meta{margin-bottom:12px; color:#4b5563}
+      .right{text-align:right}
+      @media print{button{display:none}}
+    `;
+    const rowsHtml = items
+      .filter(it => it.value > 0)
+      .map(it => `<tr><td>${it.label}</td><td class="right">${fmt(it.value)}</td></tr>`) 
+      .join('') || '<tr><td colspan="2">Sin cargos para este mes</td></tr>';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Comprobante - ${month}</title><style>${styles}</style></head>
+      <body>
+        <h1>Comprobante Gastos Departamento</h1>
+        <div class="meta">Mes: <strong>${month}</strong> · Fecha: ${new Date().toLocaleDateString()}</div>
+        <h2>Detalle</h2>
+        <table>
+          <thead><tr><th>Concepto</th><th class="right">Importe</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot><tr><td>Total a pagar al Depto</td><td class="right">${fmt(total)}</td></tr></tfoot>
+        </table>
+        <div style="margin-top:16px; color:#6b7280; font-size:12px">Documento generado automáticamente</div>
+        <button onclick="window.print()" style="margin-top:16px; padding:8px 12px">Imprimir</button>
+      </body></html>`;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  };
+
   const monthKeys = Object.keys(monthsMap).sort().reverse();
 
   return (
@@ -263,6 +307,7 @@ function App() {
               <div className="actions">
                 <button className="btn btn-primary" onClick={onSave}>Guardar Mes</button>
                 <button className="btn btn-danger" onClick={onDelete}>Eliminar Mes</button>
+                <button className="btn" onClick={onPrintDepto}>Imprimir Depto</button>
               </div>
             </div>
 
