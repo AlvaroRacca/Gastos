@@ -1,7 +1,27 @@
+# dependencias
 node_modules/
+
+# bases de datos locales
 data.db
 data/
+*.sqlite
+*.sqlite-journal
+*.db
+
+# entornos
 .env
+.env.local
+
+# builds
 dist/
 build/
+
+# logs
 npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# SO/IDE
+.DS_Store
+Thumbs.db
+.vscode/

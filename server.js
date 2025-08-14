@@ -1,58 +1,51 @@
-// Simple Express + SQLite backend for Gastos app
+// Simple Express + Postgres backend for Gastos app
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 8082;
 
 app.use(express.json());
 
-// Database setup (allow custom data dir for persistent disks)
-const DATA_DIR = process.env.DATA_DIR || __dirname;
-if (!fs.existsSync(DATA_DIR)) {
-  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+// Database: Postgres (Neon free tier compatible)
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.warn('DATABASE_URL no está configurada. Configure una conexión a Postgres (Neon).');
 }
-const DB_FILE = path.join(DATA_DIR, 'data.db');
-const db = new sqlite3.Database(DB_FILE);
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: DATABASE_URL ? { rejectUnauthorized: false } : false,
+});
 
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS meses (
+async function initDb() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS meses (
     mes TEXT PRIMARY KEY,
-    data TEXT NOT NULL
+    data JSONB NOT NULL
   )`);
+}
+initDb().catch((e) => {
+  console.error('Error creando tabla:', e);
 });
 
 // Helpers
-function getAllMonths() {
-  return new Promise((resolve, reject) => {
-    db.all('SELECT mes, data FROM meses', (err, rows) => {
-      if (err) return reject(err);
-      const map = {};
-      rows.forEach(r => { map[r.mes] = JSON.parse(r.data); });
-      resolve(map);
-    });
-  });
+async function getAllMonths() {
+  const { rows } = await pool.query('SELECT mes, data FROM meses');
+  const map = {};
+  rows.forEach((r) => { map[r.mes] = r.data || {}; });
+  return map;
 }
 
-function upsertMonth(mes, data) {
-  return new Promise((resolve, reject) => {
-    const json = JSON.stringify(data || {});
-    db.run('INSERT INTO meses(mes, data) VALUES(?, ?) ON CONFLICT(mes) DO UPDATE SET data=excluded.data', [mes, json], (err) => {
-      if (err) return reject(err);
-      resolve();
-    });
-  });
+async function upsertMonth(mes, data) {
+  await pool.query(
+    'INSERT INTO meses(mes, data) VALUES($1, $2) ON CONFLICT (mes) DO UPDATE SET data = EXCLUDED.data',
+    [mes, data || {}]
+  );
 }
 
-function deleteMonth(mes) {
-  return new Promise((resolve, reject) => {
-    db.run('DELETE FROM meses WHERE mes = ?', [mes], (err) => {
-      if (err) return reject(err);
-      resolve();
-    });
-  });
+async function deleteMonth(mes) {
+  await pool.query('DELETE FROM meses WHERE mes = $1', [mes]);
 }
 
 // API Routes
