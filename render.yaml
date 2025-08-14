@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: gastos-app
+    env: node
+    plan: free
+    buildCommand: npm ci --omit=dev || npm install --omit=dev
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /app/data
+    disks:
+      - name: data
+        mountPath: /app/data
+        sizeGB: 1
