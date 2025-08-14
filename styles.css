@@ -209,3 +209,74 @@ input[type="month"] {
 .app.compact .btn { padding: 6px 10px; border-radius: 8px; }
 .app.compact input[type="month"],
 .app.compact .form-grid input[type="number"] { padding: 8px 10px; border-radius: 8px; }
+
+/* Receipt (Depto) */
+.receipt-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 24px;
+  z-index: 1000;
+}
+.receipt-sheet {
+  width: 25%;
+  min-width: 220px;
+  background: #fff;
+  color: #111;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.receipt-sheet h1 { font-size: 18px; margin: 0 0 6px; }
+.receipt-sheet .meta { margin-bottom: 6px; color: #4b5563; font-size: 13px; }
+.receipt-sheet table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 14px; }
+.receipt-sheet th, .receipt-sheet td { border: 1px solid #e5e7eb; padding: 4px 6px; text-align: left; }
+.receipt-sheet thead th { background: #f8fafc; font-weight: 600; }
+.receipt-sheet tfoot td { font-weight: 700; }
+.receipt-sheet .right { text-align: right; font-variant-numeric: tabular-nums; }
+.receipt-sheet .total { font-size: 16px; }
+.receipt-sheet .actions { margin-top: 8px; display: flex; gap: 8px; justify-content: center; }
+
+@media print {
+  body { background: #fff; }
+  body * { visibility: hidden; }
+  .receipt-sheet, .receipt-sheet * { visibility: visible; }
+  .receipt-overlay { position: static; inset: auto; background: none; padding: 0; }
+  .receipt-sheet { margin: 0 auto; box-shadow: none; width: 25%; }
+}
+
+/* Modal (Login) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2,6,23,0.7); /* near slate-950 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.modal-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+}
+.modal-card h2 { font-size: 20px; margin-bottom: 12px; }
+.modal-card .form-field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.modal-card input[type="password"] {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--divider);
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+.modal-card .form-error { margin-top: 8px; color: #fecaca; font-size: 13px; }
+.modal-card .hint { margin-top: 10px; color: var(--muted); font-size: 12px; text-align: center; }

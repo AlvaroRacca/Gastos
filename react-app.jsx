@@ -1,30 +1,48 @@
 /* global React, ReactDOM, Chart */
 
-// REST API helper
+// REST API helper (with credentials)
 const api = {
+  async _fetch(path, opts={}) {
+    const res = await fetch(path, { credentials: 'include', ...opts });
+    if (res.status === 401) {
+      const err = new Error('unauthorized');
+      err.status = 401;
+      throw err;
+    }
+    return res;
+  },
   async getAll() {
-    const res = await fetch('/api/data');
+    const res = await this._fetch('/api/data');
     if (!res.ok) throw new Error('Error al cargar datos');
     return res.json();
   },
   async set(month, value) {
-    const res = await fetch(`/api/months/${encodeURIComponent(month)}`, {
+    const res = await this._fetch(`/api/months/${encodeURIComponent(month)}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value)
     });
     if (!res.ok) throw new Error('Error al guardar');
   },
   async del(month) {
-    const res = await fetch(`/api/months/${encodeURIComponent(month)}`, { method: 'DELETE' });
+    const res = await this._fetch(`/api/months/${encodeURIComponent(month)}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Error al borrar');
   },
   async exportCSV() {
-    const res = await fetch('/api/export');
+    const res = await this._fetch('/api/export');
     if (!res.ok) throw new Error('Error al exportar');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = 'gastos.csv'; a.click();
     URL.revokeObjectURL(url);
+  },
+  async login(password) {
+    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ password }) });
+    if (res.status === 401) throw new Error('Clave incorrecta');
+    if (!res.ok) throw new Error('Error de login');
+    return res.json();
+  },
+  async logout() {
+    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
   }
 };
 
@@ -108,6 +126,9 @@ function MonthsChart({ dataMap }) {
 function App() {
   const [monthsMap, setMonthsMap] = React.useState({});
   const [month, setMonth] = React.useState(() => new Date().toISOString().slice(0,7));
+  const [showReceipt, setShowReceipt] = React.useState(false);
+  const [showLogin, setShowLogin] = React.useState(false);
+  const [isAuthed, setIsAuthed] = React.useState(false);
   const { form, update, setAll } = useForm({
     gExpensa: '', gAgua: '', gGas: '', gLuz: '',
     gInternet: '', gTarjeta: '', gAuto: '', gCochera: '',
@@ -117,8 +138,18 @@ function App() {
   const totals = React.useMemo(() => calcTotals(form), [form]);
 
   const loadAll = React.useCallback(async () => {
-    const all = await api.getAll();
-    setMonthsMap(all);
+    try {
+      const all = await api.getAll();
+      setMonthsMap(all);
+      setIsAuthed(true);
+    } catch (e) {
+      if (e.status === 401) {
+        setShowLogin(true);
+        setIsAuthed(false);
+      } else {
+        throw e;
+      }
+    }
   }, []);
 
   const loadMonth = React.useCallback((m) => {
@@ -156,68 +187,60 @@ function App() {
   };
 
   const onSave = async () => {
-    await api.set(month, form);
-    await loadAll();
+    try { await api.set(month, form); await loadAll(); }
+    catch (e) { if (e.status === 401) setShowLogin(true); else throw e; }
   };
 
   const onDelete = async () => {
-    await api.del(month);
-    await loadAll();
-    setAll({});
+    try { await api.del(month); await loadAll(); setAll({}); }
+    catch (e) { if (e.status === 401) setShowLogin(true); else throw e; }
   };
 
   const onExport = async () => {
-    await api.exportCSV();
+    try { await api.exportCSV(); } catch (e) { if (e.status === 401) setShowLogin(true); else throw e; }
   };
 
-  const onPrintDepto = () => {
+  const onPrintDepto = () => setShowReceipt(true);
+
+  function ReceiptDepto({ month, form, onClose }) {
     const d = { ...form };
     const items = [
       { label: 'Expensa', value: toNum(d.gExpensa) },
       { label: 'Agua', value: toNum(d.gAgua) },
       { label: 'Gas', value: toNum(d.gGas) },
       { label: 'Luz', value: toNum(d.gLuz) },
-    ];
-    const total = items.reduce((s, it) => s + it.value, 0);
-    const win = window.open('', '_blank');
-    if (!win) return;
-    const styles = `
-      :root{--txt:#111;--muted:#4b5563;--line:#e5e7eb}
-      html,body{background:#fff}
-      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; padding:0; color:var(--txt)}
-      .sheet{width:25%; min-width:220px; margin:10px auto; padding:8px}
-      h1{font-size:18px; margin:0 0 6px}
-      .meta{margin-bottom:6px; color:var(--muted); font-size:13px}
-      table{width:100%; border-collapse:collapse; margin-top:6px; font-size:14px}
-      th,td{border:1px solid var(--line); padding:4px 6px; text-align:left}
-      thead th{background:#f8fafc; font-weight:600}
-      tfoot td{font-weight:700}
-      .right{text-align:right; font-variant-numeric: tabular-nums}
-      .total{font-size:16px}
-      .actions{margin-top:8px; text-align:center}
-      @media print{.actions{display:none}}
-    `;
-    const rowsHtml = items
-      .filter(it => it.value > 0)
-      .map(it => `<tr><td>${it.label}</td><td class="right">${fmt(it.value)}</td></tr>`) 
-      .join('') || '<tr><td colspan="2">Sin cargos para este mes</td></tr>';
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Comprobante - ${month}</title><style>${styles}</style></head>
-      <body>
-        <div class="sheet">
-          <h1>Gastos Departamento - ${month}</h1>
-          <div class="meta">Fecha: ${new Date().toLocaleDateString()}</div>
+    ].filter(it => toNum(it.value) > 0);
+    const total = items.reduce((s, it) => s + toNum(it.value), 0);
+    return (
+      <div className="receipt-overlay" role="dialog" aria-modal="true">
+        <div className="receipt-sheet">
+          <h1>Gastos Departamento - {month}</h1>
+          <div className="meta">Fecha: {new Date().toLocaleDateString()}</div>
           <table>
-            <thead><tr><th>Concepto</th><th class="right">Importe</th></tr></thead>
-            <tbody>${rowsHtml}</tbody>
-            <tfoot><tr><td class="total">Total a pagar</td><td class="right total">${fmt(total)}</td></tr></tfoot>
+            <thead>
+              <tr><th>Concepto</th><th className="right">Importe</th></tr>
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr><td colSpan={2}>Sin cargos para este mes</td></tr>
+              ) : (
+                items.map((it) => (
+                  <tr key={it.label}><td>{it.label}</td><td className="right">{fmt(toNum(it.value))}</td></tr>
+                ))
+              )}
+            </tbody>
+            <tfoot>
+              <tr><td className="total">Total a pagar al Depto</td><td className="right total">{fmt(total)}</td></tr>
+            </tfoot>
           </table>
-          <div class="actions"><button onclick="window.print()" style="padding:4px 8px; font-size:12px">Imprimir</button></div>
+          <div className="actions">
+            <button className="btn" onClick={() => window.print()}>Imprimir</button>
+            <button className="btn" onClick={onClose}>Cerrar</button>
+          </div>
         </div>
-      </body></html>`;
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-  };
+      </div>
+    );
+  }
 
   const monthKeys = Object.keys(monthsMap).sort().reverse();
 
@@ -231,6 +254,7 @@ function App() {
             <input type="month" value={month} onChange={(e)=>loadMonth(e.target.value)} />
           </label>
           <button className="btn" onClick={onNew}>Nuevo Mes</button>
+          {isAuthed && <button className="btn" onClick={async()=>{ await api.logout(); setIsAuthed(false); setShowLogin(true); }}>Salir</button>}
         </div>
       </header>
 
@@ -297,15 +321,15 @@ function App() {
               <h3>Resumen</h3>
               <div className="summary-grid">
                 <div className="summary-item">
-                  <span>A pagar al Depto</span>
+                  <span>A pagar depto: </span>
                   <strong>{fmt(totals.totalD)}</strong>
                 </div>
                 <div className="summary-item">
-                  <span>Gastos Totales</span>
+                  <span>Gastos Totales: </span>
                   <strong>{fmt(totals.totalG)}</strong>
                 </div>
                 <div className="summary-item">
-                  <span>Balance (Ingresos - Gastos)</span>
+                  <span>Balance (Ingresos - Gastos): </span>
                   <strong>{fmt(totals.bal)}</strong>
                 </div>
               </div>
@@ -321,11 +345,58 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <small>Datos guardados en base de datos</small>
         <div style={{ marginTop: 12 }}>
           <MonthsChart dataMap={monthsMap} />
         </div>
       </footer>
+
+      {showReceipt && (
+        <ReceiptDepto
+          month={month}
+          form={form}
+          onClose={() => setShowReceipt(false)}
+        />
+      )}
+
+      {showLogin && (
+        <LoginModal
+          onLogin={async (pwd) => {
+            await api.login(pwd);
+            setShowLogin(false);
+            await loadAll();
+          }}
+          onClose={() => setShowLogin(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function LoginModal({ onLogin, onClose }) {
+  const [pwd, setPwd] = React.useState('');
+  const [err, setErr] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(''); setBusy(true);
+    try { await onLogin(pwd); } catch (ex) { setErr(ex.message || 'Error'); } finally { setBusy(false); }
+  };
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal-card">
+        <h2>Acceso</h2>
+        <form onSubmit={submit}>
+          <label className="form-field">Contraseña
+            <input type="password" value={pwd} onChange={(e)=>setPwd(e.target.value)} placeholder="••••••" autoFocus />
+          </label>
+          {err && <div className="form-error">{err}</div>}
+          <div className="actions">
+            <button className="btn btn-primary" type="submit" disabled={busy}>{busy? 'Ingresando…':'Ingresar'}</button>
+            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+          </div>
+        </form>
+        <p className="hint">Configura APP_PASSWORD en el servidor.</p>
+      </div>
     </div>
   );
 }
