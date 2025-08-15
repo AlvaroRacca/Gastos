@@ -35,8 +35,20 @@ const api = {
     a.href = url; a.download = 'gastos.csv'; a.click();
     URL.revokeObjectURL(url);
   },
-  async login(password) {
-    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ password }) });
+  async getTemplate() {
+    const res = await this._fetch('/api/template');
+    if (!res.ok) throw new Error('Error al cargar plantilla');
+    return res.json(); // { template: {...} | null }
+  },
+  async saveTemplate(template) {
+    const res = await this._fetch('/api/template', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template }) });
+    if (!res.ok) throw new Error('Error al guardar plantilla');
+    return res.json();
+  },
+  async login(creds) {
+    // creds puede ser string (password legacy) o { email, password }
+    const body = typeof creds === 'string' ? { password: creds } : (creds || {});
+    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
     if (res.status === 401) throw new Error('Clave incorrecta');
     if (!res.ok) throw new Error('Error de login');
     return res.json();
@@ -187,6 +199,19 @@ function App() {
   }, [monthsMap, setAll]);
 
   React.useEffect(() => { loadAll(); }, [loadAll]);
+  // Load template from backend after auth
+  React.useEffect(() => {
+    (async () => {
+      if (!isAuthed) return;
+      try {
+        const res = await api.getTemplate();
+        const remote = res?.template;
+        if (remote && typeof remote === 'object') {
+          setTemplate(remote);
+        }
+      } catch {}
+    })();
+  }, [isAuthed]);
   // One-time migration from previous localStorage storage if present (send to backend)
   React.useEffect(() => {
     (async () => {
@@ -209,9 +234,19 @@ function App() {
   }, [monthsMap]);
 
   // Guardar template al cambiar
+  const tplSaveTimer = React.useRef(null);
+  const tplDidLoad = React.useRef(false);
   React.useEffect(() => {
+    // persist also in localStorage for offline/fallback
     try { localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template)); } catch {}
-  }, [template]);
+    // debounce save to backend if authed
+    if (!isAuthed) return;
+    if (tplSaveTimer.current) clearTimeout(tplSaveTimer.current);
+    tplSaveTimer.current = setTimeout(async () => {
+      try { await api.saveTemplate(template); } catch {}
+    }, 400);
+    return () => { if (tplSaveTimer.current) clearTimeout(tplSaveTimer.current); };
+  }, [template, isAuthed]);
 
   const onNew = () => {
     const m = new Date().toISOString().slice(0,7);
@@ -539,6 +574,8 @@ function App() {
             await api.login(pwd);
             setShowLogin(false);
             await loadAll();
+            // fetch template after login
+            try { const res = await api.getTemplate(); if (res?.template) setTemplate(res.template); } catch {}
           }}
           onClose={() => setShowLogin(false)}
         />
@@ -556,25 +593,53 @@ function App() {
 }
 
 function LoginModal({ onLogin, onClose }) {
+  const [mode, setMode] = React.useState('login'); // 'login' | 'signup'
+  const [email, setEmail] = React.useState('');
   const [pwd, setPwd] = React.useState('');
   const [err, setErr] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const submit = async (e) => {
     e.preventDefault();
     setErr(''); setBusy(true);
-    try { await onLogin(pwd); } catch (ex) { setErr(ex.message || 'Error'); } finally { setBusy(false); }
+    try {
+      if (mode === 'signup') {
+        const res = await fetch('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ email: email.trim(), password: pwd }) });
+        if (!res.ok) {
+          const j = await res.json().catch(()=>({}));
+          throw new Error(j.error === 'email_taken' ? 'El email ya está registrado' : 'Error al crear cuenta');
+        }
+      } else {
+        // Si no hay email ingresado, intentamos modo legacy con solo password
+        if (!email.trim()) {
+          await onLogin(pwd);
+        } else {
+          await onLogin({ email: email.trim(), password: pwd });
+        }
+      }
+      onClose();
+    } catch (ex) {
+      setErr(ex.message || 'Error');
+    } finally { setBusy(false); }
   };
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <div className="modal-card">
-        <h2>Acceso</h2>
+        <h2>{mode === 'signup' ? 'Crear cuenta' : 'Acceso'}</h2>
         <form onSubmit={submit}>
+          <label className="form-field">Email (opcional para login legacy)
+            <input type="email" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="tu@email.com" />
+          </label>
           <label className="form-field">Contraseña
             <input type="password" value={pwd} onChange={(e)=>setPwd(e.target.value)} placeholder="••••••" autoFocus />
           </label>
           {err && <div className="form-error">{err}</div>}
           <div className="actions">
-            <button className="btn btn-primary" type="submit" disabled={busy}>{busy? 'Ingresando…':'Ingresar'}</button>
+            <button className="btn btn-primary" type="submit" disabled={busy}>
+              {busy? (mode==='signup'?'Creando…':'Ingresando…') : (mode==='signup'?'Crear cuenta':'Ingresar')}
+            </button>
+            <button type="button" className="btn" onClick={()=>setMode(mode==='signup'?'login':'signup')}>
+              {mode==='signup' ? 'Ya tengo cuenta' : 'Crear cuenta nueva'}
+            </button>
             <button type="button" className="btn" onClick={onClose}>Cancelar</button>
           </div>
         </form>

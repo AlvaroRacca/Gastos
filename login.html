@@ -16,39 +16,78 @@
   <div class="login-wrap">
     <div class="modal-card">
       <div class="logo">Control de Gastos</div>
-      <h2>Acceso</h2>
+      <h2 id="formTitle">Acceso</h2>
+      <div class="form-field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" placeholder="tu@email.com" />
+      </div>
       <div class="form-field">
         <label for="password">Contraseña</label>
         <input id="password" type="password" autocomplete="current-password" autofocus />
       </div>
       <div id="error" class="form-error" style="display:none"></div>
       <div class="actions" style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end">
-        <button id="btnLogin" class="btn">Entrar</button>
+        <button id="btnSubmit" class="btn btn-primary">Ingresar</button>
+        <button id="btnToggle" class="btn" type="button">Crear cuenta nueva</button>
       </div>
-      <div class="hint">Ingresá la contraseña para continuar</div>
+      <div id="hint" class="hint">Podés dejar el email vacío para usar el modo legacy (solo contraseña)</div>
     </div>
   </div>
 
   <script>
     const $ = (s) => document.querySelector(s);
-    const btn = $('#btnLogin');
+    const btn = $('#btnSubmit');
     const error = $('#error');
+    const emailInput = $('#email');
     const input = $('#password');
+    const btnToggle = $('#btnToggle');
+    const title = $('#formTitle');
+    const hint = $('#hint');
+    let mode = 'login'; // 'login' | 'signup'
 
-    async function doLogin() {
+    function setMode(m) {
+      mode = m;
+      if (mode === 'signup') {
+        title.textContent = 'Crear cuenta';
+        btn.textContent = 'Crear cuenta';
+        btnToggle.textContent = 'Ya tengo cuenta';
+        hint.textContent = 'Creá tu cuenta con email y contraseña';
+      } else {
+        title.textContent = 'Acceso';
+        btn.textContent = 'Ingresar';
+        btnToggle.textContent = 'Crear cuenta nueva';
+        hint.textContent = 'Podés dejar el email vacío para usar el modo legacy (solo contraseña)';
+      }
+    }
+
+    async function doAction() {
       error.style.display = 'none';
       const password = input.value.trim();
+      const email = emailInput.value.trim();
       if (!password) { error.textContent = 'Ingresá la contraseña'; error.style.display = 'block'; return; }
       try {
-        const res = await fetch('/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ password })
-        });
+        let res;
+        if (mode === 'signup') {
+          if (!email) { error.textContent = 'Ingresá un email para registrar'; error.style.display = 'block'; return; }
+          res = await fetch('/api/signup', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+            body: JSON.stringify({ email, password })
+          });
+        } else {
+          // login: si no hay email -> modo legacy
+          const body = email ? { email, password } : { password };
+          res = await fetch('/api/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+            body: JSON.stringify(body)
+          });
+        }
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
-          error.textContent = j.error === 'invalid_password' ? 'Contraseña incorrecta' : 'Error de acceso';
+          if (mode === 'signup') {
+            error.textContent = j.error === 'email_taken' ? 'El email ya está registrado' : 'Error al crear cuenta';
+          } else {
+            error.textContent = j.error === 'invalid_password' ? 'Contraseña incorrecta' : 'Error de acceso';
+          }
           error.style.display = 'block';
           return;
         }
@@ -60,8 +99,11 @@
       }
     }
 
-    btn.addEventListener('click', doLogin);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+    btn.addEventListener('click', doAction);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAction(); });
+    emailInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAction(); });
+    btnToggle.addEventListener('click', () => setMode(mode === 'login' ? 'signup' : 'login'));
+    setMode('login');
   </script>
 </body>
 </html>

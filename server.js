@@ -28,10 +28,46 @@ const pool = new Pool({
   ssl: DATABASE_URL ? { rejectUnauthorized: false } : false,
 });
 
+// Template routes (protected)
+app.get('/api/template', async (req, res) => {
+  try {
+    if (!isAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
+    const uid = readSession(req) ?? 0;
+    const tpl = await getTemplateFor(uid);
+    res.json({ template: tpl || null });
+  } catch (e) {
+    res.status(500).json({ error: 'template_get_error', details: String(e) });
+  }
+});
+app.put('/api/template', async (req, res) => {
+  try {
+    if (!isAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
+    const uid = readSession(req) ?? 0;
+    const { template } = req.body || {};
+    if (!template || typeof template !== 'object') return res.status(400).json({ error: 'invalid_template' });
+    await saveTemplateFor(uid, template);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'template_put_error', details: String(e) });
+  }
+});
+
 async function initDb() {
   if (USE_FILE_DB) return; // nada que crear en modo archivo
   await pool.query(`CREATE TABLE IF NOT EXISTS meses (
     mes TEXT PRIMARY KEY,
+    data JSONB NOT NULL
+  )`);
+  // Tabla de usuarios (para multiusuario).
+  await pool.query(`CREATE TABLE IF NOT EXISTS usuarios (
+    id SERIAL PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    pass TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+  // Plantilla por usuario
+  await pool.query(`CREATE TABLE IF NOT EXISTS templates (
+    uid INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
     data JSONB NOT NULL
   )`);
 }
@@ -40,9 +76,23 @@ initDb().catch((e) => {
 });
 
 // Helpers
-function signAuth() {
-  return crypto.createHmac('sha256', AUTH_SECRET).update('auth').digest('hex');
+function hmac(str) {
+  return crypto.createHmac('sha256', AUTH_SECRET).update(String(str)).digest('hex');
 }
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(password, salt, 64);
+  return `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`;
+}
+function verifyPassword(password, stored) {
+  if (!stored || !stored.startsWith('scrypt$')) return false;
+  const [, saltB64, hashB64] = stored.split('$');
+  const salt = Buffer.from(saltB64, 'base64');
+  const expected = Buffer.from(hashB64, 'base64');
+  const got = crypto.scryptSync(password, salt, expected.length);
+  return crypto.timingSafeEqual(got, expected);
+}
+// Session cookie: valor = `${uid}.${hmac(uid)}`
 function parseCookies(req) {
   const header = req.headers['cookie'];
   if (!header) return {};
@@ -53,12 +103,22 @@ function parseCookies(req) {
     return [k, v];
   }));
 }
-function isAuthed(req) {
+function readSession(req) {
   const cookies = parseCookies(req);
-  return cookies[COOKIE_NAME] === signAuth();
+  const token = cookies[COOKIE_NAME] || '';
+  const parts = token.split('.')
+  if (parts.length !== 2) return null;
+  const [uid, mac] = parts;
+  if (hmac(uid) !== mac) return null;
+  const id = Number(uid);
+  return Number.isFinite(id) ? id : null;
 }
-function setAuthCookie(res) {
-  const val = signAuth();
+function isAuthed(req) {
+  const uid = readSession(req);
+  return Number.isFinite(uid);
+}
+function setAuthCookie(res, uid) {
+  const val = `${uid}.${hmac(String(uid))}`;
   const attrs = [
     `${COOKIE_NAME}=${encodeURIComponent(val)}`,
     'HttpOnly',
@@ -118,22 +178,102 @@ async function deleteMonth(mes) {
   }
 }
 
+// Template helpers per user
+async function getTemplateFor(uid) {
+  if (USE_FILE_DB) {
+    const map = await readFileDb();
+    const all = map.__templates || {};
+    return all[String(uid)] || null;
+  } else {
+    const r = await pool.query('SELECT data FROM templates WHERE uid = $1', [uid]);
+    return r.rows[0]?.data || null;
+  }
+}
+async function saveTemplateFor(uid, data) {
+  if (USE_FILE_DB) {
+    const map = await readFileDb();
+    map.__templates = map.__templates || {};
+    map.__templates[String(uid)] = data || {};
+    await writeFileDb(map);
+  } else {
+    await pool.query(
+      'INSERT INTO templates(uid, data) VALUES($1, $2) ON CONFLICT (uid) DO UPDATE SET data = EXCLUDED.data',
+      [uid, data || {}]
+    );
+  }
+}
+
 // API auth middleware (protect everything except login/logout)
 app.use('/api', (req, res, next) => {
-  if (req.path === '/login' || req.path === '/logout') return next();
+  if (req.path === '/login' || req.path === '/logout' || req.path === '/signup' || req.path === '/me') return next();
   if (!isAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
   next();
 });
 
 // Auth routes
-app.post('/api/login', (req, res) => {
-  if (!APP_PASSWORD) return res.status(500).json({ error: 'server_password_not_set' });
-  const { password } = req.body || {};
-  if (password === APP_PASSWORD) {
-    setAuthCookie(res);
-    return res.json({ ok: true });
+// GET current session info
+app.get('/api/me', (req, res) => {
+  const uid = readSession(req);
+  if (!uid) return res.json({ ok: false });
+  res.json({ ok: true, uid });
+});
+// Signup (multiusuario). Si APP_PASSWORD está definido, se permite igualmente crear usuarios y convivirán con el modo legacy.
+app.post('/api/signup', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
+    if (USE_FILE_DB) {
+      const map = await readFileDb();
+      map.__users = map.__users || [];
+      if (map.__users.find(u => u.email === email)) return res.status(409).json({ error: 'email_taken' });
+      const user = { id: (map.__users.at(-1)?.id || 0) + 1, email, pass: hashPassword(password) };
+      map.__users.push(user);
+      await writeFileDb(map);
+      setAuthCookie(res, user.id);
+      return res.json({ ok: true });
+    } else {
+      const existing = await pool.query('SELECT id FROM usuarios WHERE email = $1', [email]);
+      if (existing.rows.length) return res.status(409).json({ error: 'email_taken' });
+      const hashed = hashPassword(password);
+      const ins = await pool.query('INSERT INTO usuarios(email, pass) VALUES($1, $2) RETURNING id', [email, hashed]);
+      const uid = ins.rows[0].id;
+      setAuthCookie(res, uid);
+      return res.json({ ok: true });
+    }
+  } catch (e) {
+    res.status(500).json({ error: 'signup_error', details: String(e) });
   }
-  return res.status(401).json({ error: 'invalid_password' });
+});
+// Login: si viene {email,password} usar usuarios; si no, compat con APP_PASSWORD legacy
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  try {
+    if (email) {
+      if (USE_FILE_DB) {
+        const map = await readFileDb();
+        const u = (map.__users || []).find(u => u.email === email);
+        if (!u || !verifyPassword(password || '', u.pass)) return res.status(401).json({ error: 'invalid_credentials' });
+        setAuthCookie(res, u.id);
+        return res.json({ ok: true });
+      } else {
+        const r = await pool.query('SELECT id, pass FROM usuarios WHERE email = $1', [email]);
+        if (!r.rows.length) return res.status(401).json({ error: 'invalid_credentials' });
+        const u = r.rows[0];
+        if (!verifyPassword(password || '', u.pass)) return res.status(401).json({ error: 'invalid_credentials' });
+        setAuthCookie(res, u.id);
+        return res.json({ ok: true });
+      }
+    }
+    // Legacy APP_PASSWORD
+    if (!APP_PASSWORD) return res.status(400).json({ error: 'missing_credentials' });
+    if ((password || '') === APP_PASSWORD) {
+      setAuthCookie(res, 0);
+      return res.json({ ok: true, legacy: true });
+    }
+    return res.status(401).json({ error: 'invalid_password' });
+  } catch (e) {
+    res.status(500).json({ error: 'login_error', details: String(e) });
+  }
 });
 app.post('/api/logout', (req, res) => {
   clearAuthCookie(res);
@@ -143,8 +283,15 @@ app.post('/api/logout', (req, res) => {
 // API Routes (protected)
 app.get('/api/data', async (req, res) => {
   try {
-    const map = await getAllMonths();
-    res.json(map);
+    const uid = readSession(req) ?? 0;
+    const all = await getAllMonths();
+    // Filtrar por usuario (keys con prefijo `${uid}:`), y devolver sin prefijo
+    const out = {};
+    for (const [k, v] of Object.entries(all)) {
+      const p = `${uid}:`;
+      if (k.startsWith(p)) out[k.slice(p.length)] = v;
+    }
+    res.json(out);
   } catch (e) {
     res.status(500).json({ error: 'db_error', details: String(e) });
   }
@@ -152,7 +299,8 @@ app.get('/api/data', async (req, res) => {
 
 app.put('/api/months/:mes', async (req, res) => {
   try {
-    const mes = req.params.mes;
+    const uid = readSession(req) ?? 0;
+    const mes = `${uid}:${req.params.mes}`;
     await upsertMonth(mes, req.body || {});
     res.json({ ok: true });
   } catch (e) {
@@ -162,7 +310,8 @@ app.put('/api/months/:mes', async (req, res) => {
 
 app.delete('/api/months/:mes', async (req, res) => {
   try {
-    const mes = req.params.mes;
+    const uid = readSession(req) ?? 0;
+    const mes = `${uid}:${req.params.mes}`;
     await deleteMonth(mes);
     res.json({ ok: true });
   } catch (e) {
@@ -172,7 +321,13 @@ app.delete('/api/months/:mes', async (req, res) => {
 
 app.get('/api/export', async (req, res) => {
   try {
-    const map = await getAllMonths();
+    const uid = readSession(req) ?? 0;
+    const all = await getAllMonths();
+    const map = {};
+    for (const [k, v] of Object.entries(all)) {
+      const p = `${uid}:`;
+      if (k.startsWith(p)) map[k.slice(p.length)] = v;
+    }
     const rows = [['Mes','Internet','Expensa','Agua','Gas','Luz','Tarjeta','Auto','Cochera','Ingreso Catastro','Ingreso Admin','Total Depto','Total Otros','Total Ingresos','Gastos Totales','Balance']];
     const toNum = (v) => Number.parseFloat(v || '0') || 0;
     const calc = (d) => {
