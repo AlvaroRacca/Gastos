@@ -315,12 +315,22 @@ input[type="month"] {
 .modal-card.wide { max-width: 720px; }
 .modal-card h2 { font-size: 20px; margin-bottom: 12px; }
 .modal-card .form-field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
-.modal-card input[type="password"] {
+.modal-card input[type="password"],
+.modal-card input[type="email"] {
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--divider);
   padding: 10px 12px;
   border-radius: 10px;
+}
+.modal-card input[type="password"]:focus,
+.modal-card input[type="email"]:focus,
+.app-header .header-actions .month-label input[type="month"]:focus,
+.form-grid input[type="number"]:focus,
+.tpl-field-row input[type="text"]:focus {
+  outline: none;
+  border-color: rgba(34,197,94,0.55);
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.15);
 }
 .modal-card .form-error { margin-top: 8px; color: #fecaca; font-size: 13px; }
 .modal-card .hint { margin-top: 10px; color: var(--muted); font-size: 12px; text-align: center; }
@@ -331,10 +341,26 @@ input[type="month"] {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
-.app-header h1 { font-size: 22px; }
-.app-header .header-actions { display: flex; align-items: center; gap: 10px; }
-.app-header .header-actions .month-label { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; margin-right: 4px; }
+.app-header h1 {
+  font-size: clamp(18px, 2.6vw, 24px);
+}
+.app-header .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.app-header .header-actions .month-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-right: 4px;
+}
 .app-header .header-actions .month-label input[type="month"] {
   background: var(--panel);
   color: var(--text);
@@ -343,6 +369,12 @@ input[type="month"] {
   border-radius: 10px;
   font-size: 14px;
   min-width: 160px;
+}
+@media (max-width: 640px) {
+  .app-header { flex-direction: column; align-items: stretch; }
+  .app-header .header-actions { width: 100%; justify-content: space-between; }
+  .app-header .header-actions .month-label { width: 100%; justify-content: space-between; }
+  .app-header .header-actions .month-label input[type="month"] { width: 100%; min-width: 0; }
 }
 .tpl-editor-section { margin-top: 10px; }
 .tpl-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

@@ -626,7 +626,7 @@ function LoginModal({ onLogin, onClose }) {
       <div className="modal-card">
         <h2>{mode === 'signup' ? 'Crear cuenta' : 'Acceso'}</h2>
         <form onSubmit={submit}>
-          <label className="form-field">Email (opcional para login legacy)
+          <label className="form-field">Email
             <input type="email" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="tu@email.com" />
           </label>
           <label className="form-field">Contraseña
