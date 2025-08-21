@@ -30,22 +30,27 @@ Gastos es una aplicación web para la gestión de gastos personales o familiares
    ```bash
    git clone https://github.com/AlvaroRacca/Gastos.git
 2. Entrar al directorio del proyecto:
+    ```bash
    cd Gastos
-3. Instalar dependencias:
+4. Instalar dependencias:
+   ```bash
    npm install
-4. Iniciar la aplicación:
+6. Iniciar la aplicación:
+   ```bash
    npm start
-5. Abrir en el navegador:
+8. Abrir en el navegador:
+9. ```bash
    http://localhost:3000
 
 📂 Estructura del proyecto
-Gastos/
-├── backend/        # Código del servidor Express
-├── frontend/       # Código del cliente React
-├── database/       # Base de datos SQLite
-├── package.json
-└── README.md
-
+   ```bash
+   Gastos/
+   ├── backend/        # Código del servidor Express
+   ├── frontend/       # Código del cliente React
+   ├── database/       # Base de datos SQLite
+   ├── package.json
+   └── README.md
+   ```
 🤝 Contribuciones
   Las contribuciones son bienvenidas. Por favor abre un pull request o un issue para sugerir mejoras o reportar errores.
 
