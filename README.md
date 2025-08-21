@@ -42,7 +42,11 @@ Gastos es una aplicación web para la gestión de gastos personales o familiares
 9. ```bash
    http://localhost:3000
 
-📂 Estructura del proyecto
+
+---
+
+## 📂 Estructura del proyecto
+
    ```bash
    Gastos/
    ├── backend/        # Código del servidor Express
@@ -51,11 +55,18 @@ Gastos es una aplicación web para la gestión de gastos personales o familiares
    ├── package.json
    └── README.md
    ```
-🤝 Contribuciones
+
+---
+
+## 🤝 Contribuciones
   Las contribuciones son bienvenidas. Por favor abre un pull request o un issue para sugerir mejoras o reportar errores.
 
-📄 Licencia
+---
+
+## 📄 Licencia
   Este proyecto está bajo la licencia MIT.
 
-👨‍💻 Autor
+---
+
+## 👨‍💻 Autor
   Alvaro Racca - GitHub
